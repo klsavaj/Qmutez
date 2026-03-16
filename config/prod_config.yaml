@@ -1,0 +1,21 @@
+# PRODUCTION CONFIGURATION
+# Used for final training and full dataset evaluation.
+
+data:
+  # The base URL for TLC trip data (parquet format)
+  base_url: "https://d37ci6vzurychx.cloudfront.net/trip-data"
+  taxi_type: "yellow"
+  year: 2025  # Post-COVID summer data gives the most realistic economic baselines
+  month: 8
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+
+simulation:
+  time_window:
+    start_hour: 7
+    end_hour: 10
+  # No downsampling in prod
+  sample_ratio: 1.0
+  # Thresholds
+  max_detour_km: 3.0
+  max_detour_mins: 15.0
