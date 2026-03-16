@@ -194,32 +194,51 @@ class PairGenerator:
             if d_count % 100 == 0:
                 print(f"Processed {d_count} drivers across batches. Current optimal pairs locked: {len(final_pairs)}")
 
-        # Finally, we must also generate '0' (Negative) labels so the ML model can learn rejections
-        print("Injecting Negative labels (Trips that were mathematically absurd)...")
-        np.random.seed(42)
+        # Generate negative labels: real pairs that genuinely fail the matching criteria
+        # We compute ALL features honestly — no hardcoded fakes — so the model learns
+        # real rejection patterns instead of trivial shortcuts.
+        print("Generating negative labels from genuinely infeasible pairs...")
+        rng = np.random.RandomState(42)
         negative_pairs = []
-        for _ in range(len(final_pairs)): # Balance the dataset 50/50
-            d_idx = self.drivers_df.sample().index[0]
-            r_idx = self.riders_df.sample().index[0]
+        target_negatives = len(final_pairs)  # Balance the dataset ~50/50
+        attempts = 0
+        max_attempts = target_negatives * 10  # Safety valve
+        
+        while len(negative_pairs) < target_negatives and attempts < max_attempts:
+            attempts += 1
+            d_idx = self.drivers_df.sample(random_state=rng).index[0]
+            r_idx = self.riders_df.sample(random_state=rng).index[0]
             
             d_start = (self.drivers_df.loc[d_idx, 'pickup_latitude'], self.drivers_df.loc[d_idx, 'pickup_longitude'])
             d_end = (self.drivers_df.loc[d_idx, 'dropoff_latitude'], self.drivers_df.loc[d_idx, 'dropoff_longitude'])
             r_start = (self.riders_df.loc[r_idx, 'pickup_latitude'], self.riders_df.loc[r_idx, 'pickup_longitude'])
             r_end = (self.riders_df.loc[r_idx, 'dropoff_latitude'], self.riders_df.loc[r_idx, 'dropoff_longitude'])
             
-            detour, _, d_orig_dist = calculate_detour_cost(d_start, d_end, r_start, r_end)
+            detour, new_dist, d_orig_dist = calculate_detour_cost(d_start, d_end, r_start, r_end)
+            
+            # Only keep pairs that genuinely exceed the detour threshold
+            if detour <= max_detour_km:
+                continue
+            
+            # Compute REAL features — no fakes
+            overlap_ratio = compute_spatial_overlap(detour, d_orig_dist)
+            driver_time = self.drivers_df.loc[d_idx, 'tpep_pickup_datetime']
+            rider_time = self.riders_df.loc[r_idx, 'tpep_pickup_datetime']
+            _, time_diff = calculate_time_overlap(driver_time, rider_time)
             
             negative_pairs.append({
                 'driver_id': d_idx,
                 'rider_id': r_idx,
                 'driver_orig_dist': d_orig_dist,
                 'detour_distance_km': detour,
-                'overlap_ratio': 0.0, # Complete mismatch
-                'time_diff_mins': 60.0, # Random bad temporal mismatch
+                'overlap_ratio': overlap_ratio,
+                'time_diff_mins': time_diff,
                 'driver_approx_fare': self.drivers_df.loc[d_idx, 'fare_amount'],
                 'rider_approx_fare': self.riders_df.loc[r_idx, 'fare_amount'],
                 'label': 0
             })
+        
+        print(f"Generated {len(negative_pairs)} negative pairs from {attempts} attempts.")
             
         results_df = pd.DataFrame(final_pairs + negative_pairs)
         print(f"Generated {len(results_df)} total labeled pairs (Balanced 1s and 0s).")
