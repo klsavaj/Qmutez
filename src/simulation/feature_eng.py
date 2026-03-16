@@ -56,7 +56,9 @@ def compute_spatial_overlap(detour_km, original_driver_dist):
         return 0
     # Overlap Ratio represents how much of the trip was 'original intent'.
     # Near 1.0 means almost pure overlap. Near 0.0 means complete deviation.
-    return original_driver_dist / (original_driver_dist + detour_km)
+    # Clamp to [0, 1] — negative detours (rider on the way) can push ratio > 1.0
+    ratio = original_driver_dist / (original_driver_dist + detour_km)
+    return min(1.0, max(0.0, ratio))
 
 def calculate_time_overlap(driver_time, rider_time, threshold_mins=15):
     """
