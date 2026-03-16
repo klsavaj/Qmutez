@@ -44,20 +44,24 @@ class MultiObjectiveMatcher:
 
     def train(self, df):
         """
-        Executes dual-layer algorithm training ensuring strict Train/Test boundary isolations.
+        Executes dual-layer algorithm training with a SINGLE unified Train/Test split.
+        Both models evaluate on the exact same test set for consistent scoring.
         """
         X, y_reg, y_clf = self.prepare_data(df)
         print(f"Training on {len(X)} samples with {len(self.features)} features.")
         
+        # Single unified split — both models see the same train and test rows
+        X_train, X_test, yr_train, yr_test, yc_train, yc_test = train_test_split(
+            X, y_reg, y_clf, test_size=0.2, random_state=42
+        )
+        
         # Train Detour Regressor
-        X_train, X_test, yr_train, yr_test = train_test_split(X, y_reg, test_size=0.2, random_state=42)
         self.regressor.fit(X_train, yr_train)
         pred_detour = self.regressor.predict(X_test)
         mae = mean_absolute_error(yr_test, pred_detour)
         print(f"Regression MAE (Detour km): {mae:.2f}")
 
         # Train Match Probability Classifier
-        X_train, X_test, yc_train, yc_test = train_test_split(X, y_clf, test_size=0.2, random_state=42)
         self.classifier.fit(X_train, yc_train)
         pred_match = self.classifier.predict(X_test)
         acc = accuracy_score(yc_test, pred_match)
