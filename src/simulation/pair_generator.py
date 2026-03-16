@@ -148,17 +148,35 @@ class PairGenerator:
                         overlap_ratio = compute_spatial_overlap(detour, d_orig_dist)
                         time_compat, diff_mins = calculate_time_overlap(driver['tpep_pickup_datetime'], rider['tpep_pickup_datetime'])
                         
-                        # Graph Edge Weight Math: We want to maximize Overlap and minimize Detour
-                        # In the live model, this weight would be the actual XGBoost output.
-                        # For simulation ground truth generation, we construct a heuristic proxy weight.
-                        heuristic_weight = (overlap_ratio * 10) - detour 
-                        # Stochastic Ground Truth Labeling (Simulating Human Irrationality)
-                        # Instead of a perfect '1', borderline matches have a chance of rejection.
-                        if detour > (max_detour_km * 0.5):
-                            is_accepted = 1 if np.random.rand() < 0.50 else 0
-                        else:
-                            base_prob = 1.0 - (detour / max_detour_km) * 0.1
-                            is_accepted = 1 if np.random.rand() < base_prob else 0
+                        # Multi-factor Ground Truth Labeling
+                        # Instead of basing labels primarily on detour (which creates circular
+                        # dependency with overlap_ratio), we model acceptance as a composite
+                        # of independent behavioral factors the model must learn to combine.
+                        
+                        # Factor 1: Fare profitability — is the rider's fare worth the detour?
+                        fare_ratio = rider['fare_amount'] / max(driver['fare_amount'], 1.0)
+                        fare_score = min(fare_ratio, 1.5) / 1.5  # Normalize to [0, 1]
+                        
+                        # Factor 2: Temporal inconvenience — how disruptive is the timing?
+                        time_score = max(0, 1.0 - (diff_mins / 15.0))  # 0 at 15min, 1 at 0min
+                        
+                        # Factor 3: Trip length ratio — short detour on long trip = acceptable
+                        trip_ratio = d_orig_dist / max(d_orig_dist + detour, 0.1)
+                        
+                        # Factor 4: Detour severity — normalized by threshold
+                        detour_score = 1.0 - (detour / max_detour_km)
+                        
+                        # Composite acceptance probability with weighted factors
+                        acceptance_prob = (
+                            0.30 * detour_score +    # Physical inconvenience
+                            0.25 * fare_score +      # Economic incentive  
+                            0.25 * time_score +      # Temporal compatibility
+                            0.20 * trip_ratio         # Relative effort
+                        )
+                        
+                        # Add Gumbel noise to simulate human irrationality
+                        noise = np.random.gumbel(0, 0.1)
+                        is_accepted = 1 if (acceptance_prob + noise) > 0.45 else 0
                         
                         edge_data = {
                             'driver_id': d_idx,
@@ -172,8 +190,8 @@ class PairGenerator:
                             'label': is_accepted
                         }
                         
-                        # Add valid edge to the graph
-                        B.add_edge(f"D_{d_idx}", f"R_{r_idx}", weight=heuristic_weight, data=edge_data)
+                        # Use acceptance probability as Edge Weight for Bipartite Matching
+                        B.add_edge(f"D_{d_idx}", f"R_{r_idx}", weight=acceptance_prob, data=edge_data)
 
             # Step 2: Execute Maximum Weight Bipartite Matching Algorithm
             # This mathematically solves the batch, ensuring no driver or rider is double-mapped
