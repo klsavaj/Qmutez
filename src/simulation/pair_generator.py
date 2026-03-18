@@ -119,15 +119,16 @@ class PairGenerator:
             B = nx.Graph()
             
             # Step 1: Draw edges between all feasible pairs in the batch
-            for d_idx, driver in batch_drivers.iterrows():
+            for driver in batch_drivers.itertuples():
                 if d_count >= limit: break
+                d_idx = driver.Index
                 
                 # Add Driver Node
                 B.add_node(f"D_{d_idx}", bipartite=0)
                 d_count += 1
                 
-                d_start = (driver['pickup_latitude'], driver['pickup_longitude'])
-                d_end = (driver['dropoff_latitude'], driver['dropoff_longitude'])
+                d_start = (driver.pickup_latitude, driver.pickup_longitude)
+                d_end = (driver.dropoff_latitude, driver.dropoff_longitude)
                 
                 # Spatial Pre-filter (+/- 5km)
                 potential_riders = batch_riders[
@@ -135,18 +136,19 @@ class PairGenerator:
                     (batch_riders['pickup_longitude'].between(d_start[1]-0.05, d_start[1]+0.05))
                 ]
                 
-                for r_idx, rider in potential_riders.iterrows():
+                for rider in potential_riders.itertuples():
+                    r_idx = rider.Index
                     # Add Rider Node
                     B.add_node(f"R_{r_idx}", bipartite=1)
                     
-                    r_start = (rider['pickup_latitude'], rider['pickup_longitude'])
-                    r_end = (rider['dropoff_latitude'], rider['dropoff_longitude'])
+                    r_start = (rider.pickup_latitude, rider.pickup_longitude)
+                    r_end = (rider.dropoff_latitude, rider.dropoff_longitude)
                     
                     detour, new_dist, d_orig_dist = calculate_detour_cost(d_start, d_end, r_start, r_end)
                     
                     if detour <= max_detour_km:
                         overlap_ratio = compute_spatial_overlap(detour, d_orig_dist)
-                        time_compat, diff_mins = calculate_time_overlap(driver['tpep_pickup_datetime'], rider['tpep_pickup_datetime'])
+                        time_compat, diff_mins = calculate_time_overlap(driver.tpep_pickup_datetime, rider.tpep_pickup_datetime)
                         
                         # Multi-factor Ground Truth Labeling
                         # Instead of basing labels primarily on detour (which creates circular
@@ -154,7 +156,7 @@ class PairGenerator:
                         # of independent behavioral factors the model must learn to combine.
                         
                         # Factor 1: Fare profitability — is the rider's fare worth the detour?
-                        fare_ratio = rider['fare_amount'] / max(driver['fare_amount'], 1.0)
+                        fare_ratio = rider.fare_amount / max(driver.fare_amount, 1.0)
                         fare_score = min(fare_ratio, 1.5) / 1.5  # Normalize to [0, 1]
                         
                         # Factor 2: Temporal inconvenience — how disruptive is the timing?
@@ -185,8 +187,8 @@ class PairGenerator:
                             'detour_distance_km': detour,
                             'overlap_ratio': overlap_ratio,
                             'time_diff_mins': diff_mins,
-                            'driver_approx_fare': driver['fare_amount'],
-                            'rider_approx_fare': rider['fare_amount'],
+                            'driver_approx_fare': driver.fare_amount,
+                            'rider_approx_fare': rider.fare_amount,
                             'label': is_accepted
                         }
                         
