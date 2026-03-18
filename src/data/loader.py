@@ -117,10 +117,34 @@ class DataLoader:
             df['pickup_latitude'] += np.random.uniform(-0.002, 0.002, size=len(df))
             df['pickup_longitude'] += np.random.uniform(-0.002, 0.002, size=len(df))
             
-            print("Executing Vectorized Spherical Haversine Projection for Dropoff Coordinates...")
-            # Synthesize Destination Route directly mapped to the real 'trip_distance' using strict Spherical Trigonometry
+            print("Computing corridor-aware dropoff bearings from zone centroids...")
+            # Use DOLocationID centroids to compute the TRUE commute bearing for each trip.
+            # This preserves realistic corridor patterns (e.g., Bronx → Manhattan in AM).
+            # Gaussian noise (σ=0.3 rad ≈ 17°) simulates street-level variation.
+            
+            do_lat = df['DOLocationID'].map(lambda x: zone_dict.get(x, {}).get('centroid_lat', None))
+            do_lon = df['DOLocationID'].map(lambda x: zone_dict.get(x, {}).get('centroid_lon', None))
+            
+            # Forward azimuth (bearing) from pickup centroid to dropoff centroid
+            pu_lat_rad = np.radians(df['pickup_latitude'])
+            pu_lon_rad = np.radians(df['pickup_longitude'])
+            do_lat_rad = np.radians(do_lat)
+            do_lon_rad = np.radians(do_lon)
+            dlon = do_lon_rad - pu_lon_rad
+            
+            x = np.sin(dlon) * np.cos(do_lat_rad)
+            y = np.cos(pu_lat_rad) * np.sin(do_lat_rad) - np.sin(pu_lat_rad) * np.cos(do_lat_rad) * np.cos(dlon)
+            true_bearing = np.arctan2(x, y)  # radians, [-π, π]
+            
+            # Add Gaussian noise to simulate street-level variation around the corridor
+            corridor_noise = np.random.normal(0, 0.3, size=len(df))
+            angles = true_bearing + corridor_noise
+            
+            # Fallback: where DOLocationID was unknown, use random angle
+            missing_mask = do_lat.isna()
+            angles[missing_mask] = np.random.uniform(0, 2 * np.pi, size=missing_mask.sum())
+            
             R = 3958.8  # Earth radius in miles
-            angles = np.random.uniform(0, 2 * np.pi, size=len(df))
             dist_ratio = df['trip_distance'] / R
             
             lat1 = np.radians(df['pickup_latitude'])
