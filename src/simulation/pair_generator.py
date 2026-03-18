@@ -118,6 +118,17 @@ class PairGenerator:
             # Initialize the Bipartite Graph for this temporal batch
             B = nx.Graph()
             
+            # Build a BallTree spatial index from rider pickup coordinates (once per batch).
+            # Uses Haversine metric on the unit sphere — requires radians.
+            # Query complexity: O(log N) per driver instead of O(N) linear scan.
+            from sklearn.neighbors import BallTree
+            rider_coords_rad = np.radians(
+                batch_riders[['pickup_latitude', 'pickup_longitude']].values
+            )
+            tree = BallTree(rider_coords_rad, metric='haversine')
+            EARTH_RADIUS_KM = 6371.0
+            SEARCH_RADIUS_KM = 5.0
+            
             # Step 1: Draw edges between all feasible pairs in the batch
             for driver in batch_drivers.itertuples():
                 if d_count >= limit: break
@@ -130,11 +141,16 @@ class PairGenerator:
                 d_start = (driver.pickup_latitude, driver.pickup_longitude)
                 d_end = (driver.dropoff_latitude, driver.dropoff_longitude)
                 
-                # Spatial Pre-filter (+/- 5km)
-                potential_riders = batch_riders[
-                    (batch_riders['pickup_latitude'].between(d_start[0]-0.05, d_start[0]+0.05)) & 
-                    (batch_riders['pickup_longitude'].between(d_start[1]-0.05, d_start[1]+0.05))
-                ]
+                # Spatial pre-filter: query BallTree for riders within 5km radius
+                d_start_rad = np.radians([[d_start[0], d_start[1]]])
+                neighbor_indices = tree.query_radius(
+                    d_start_rad, r=SEARCH_RADIUS_KM / EARTH_RADIUS_KM
+                )[0]
+                
+                if len(neighbor_indices) == 0:
+                    continue
+                    
+                potential_riders = batch_riders.iloc[neighbor_indices]
                 
                 for rider in potential_riders.itertuples():
                     r_idx = rider.Index
