@@ -69,16 +69,20 @@ class PairGenerator:
 
     def generate_candidate_pairs(self, limit=1000):
         """
-        Calculates all viable route matches using Bipartite Batch Optimization.
+        Generates training data by collecting ALL feasible driver-rider pairs.
         
-        Critical Engineering Concept (Bipartite Graph Matching):
-        Instead of matching the first driver to the first rider (greedy sub-optimal), 
-        we simulate a 60-second temporal aggregation window. We build a mathematical Graph 
-        of all feasible matches inside that window, and use networkx to find the 
-        globally optimal combination that maximizes ride acceptance.
+        Design Principle (Training vs Inference separation):
+        During training, we collect every pair within the detour threshold and assign
+        labels independently via multi-factor stochastic scoring. This gives the model
+        the full distribution of feasible matches — both great and mediocre.
+        
+        At inference time (production), the trained model's predictions serve as edge
+        weights in a Bipartite Graph, where networkx.max_weight_matching selects the
+        globally optimal 1:1 assignments. This separation ensures the model learns
+        general acceptance patterns, not just optimal-pair patterns.
         """
-        import networkx as nx
-        print("Starting Bipartite Batch pair generation...")
+        import networkx as nx  # Retained for production inference (bipartite matching with ML weights)
+        print("Starting candidate pair generation...")
         
         max_detour_km = self.sim_config["max_detour_km"]
         
@@ -114,9 +118,6 @@ class PairGenerator:
             if batch_drivers.empty or batch_riders.empty:
                 current_time = window_end
                 continue
-                
-            # Initialize the Bipartite Graph for this temporal batch
-            B = nx.Graph()
             
             # Build a BallTree spatial index from rider pickup coordinates (once per batch).
             # Uses Haversine metric on the unit sphere — requires radians.
@@ -129,13 +130,14 @@ class PairGenerator:
             EARTH_RADIUS_KM = 6371.0
             SEARCH_RADIUS_KM = 5.0
             
-            # Step 1: Draw edges between all feasible pairs in the batch
+            # Collect ALL feasible pairs in this batch — not just bipartite-optimal ones.
+            # Why: Training data must represent the full distribution of feasible matches
+            # so the model learns to score mediocre pairs low AND great pairs high.
+            # Bipartite matching is an INFERENCE-TIME optimization (using the trained
+            # model's predictions as edge weights), not a training-time data filter.
             for driver in batch_drivers.itertuples():
                 if d_count >= limit: break
                 d_idx = driver.Index
-                
-                # Add Driver Node
-                B.add_node(f"D_{d_idx}", bipartite=0)
                 d_count += 1
                 
                 d_start = (driver.pickup_latitude, driver.pickup_longitude)
@@ -154,8 +156,6 @@ class PairGenerator:
                 
                 for rider in potential_riders.itertuples():
                     r_idx = rider.Index
-                    # Add Rider Node
-                    B.add_node(f"R_{r_idx}", bipartite=1)
                     
                     r_start = (rider.pickup_latitude, rider.pickup_longitude)
                     r_end = (rider.dropoff_latitude, rider.dropoff_longitude)
@@ -167,9 +167,8 @@ class PairGenerator:
                         time_compat, diff_mins = calculate_time_overlap(driver.tpep_pickup_datetime, rider.tpep_pickup_datetime)
                         
                         # Multi-factor Ground Truth Labeling
-                        # Instead of basing labels primarily on detour (which creates circular
-                        # dependency with overlap_ratio), we model acceptance as a composite
-                        # of independent behavioral factors the model must learn to combine.
+                        # Models acceptance as a composite of independent behavioral
+                        # factors the ML model must learn to combine.
                         
                         # Factor 1: Fare profitability — is the rider's fare worth the detour?
                         fare_ratio = rider.fare_amount / max(driver.fare_amount, 1.0)
@@ -196,7 +195,7 @@ class PairGenerator:
                         noise = np.random.gumbel(0, 0.1)
                         is_accepted = 1 if (acceptance_prob + noise) > 0.45 else 0
                         
-                        edge_data = {
+                        final_pairs.append({
                             'driver_id': d_idx,
                             'rider_id': r_idx,
                             'driver_orig_dist': d_orig_dist,
@@ -206,29 +205,12 @@ class PairGenerator:
                             'driver_approx_fare': driver.fare_amount,
                             'rider_approx_fare': rider.fare_amount,
                             'label': is_accepted
-                        }
-                        
-                        # Use acceptance probability as Edge Weight for Bipartite Matching
-                        B.add_edge(f"D_{d_idx}", f"R_{r_idx}", weight=acceptance_prob, data=edge_data)
-
-            # Step 2: Execute Maximum Weight Bipartite Matching Algorithm
-            # This mathematically solves the batch, ensuring no driver or rider is double-mapped
-            # while maximizing the overall heuristic efficiency of the entire ecosystem.
-            optimal_matches = nx.max_weight_matching(B, maxcardinality=False)
-            
-            # Step 3: Extract the winning pairs
-            for node1, node2 in optimal_matches:
-                # networkx returns (NodeA, NodeB) unordered. Find which is Driver.
-                d_node = node1 if str(node1).startswith("D_") else node2
-                r_node = node2 if str(node2).startswith("R_") else node1
-                
-                edge_metadata = B[d_node][r_node]['data']
-                final_pairs.append(edge_metadata)
+                        })
                 
             current_time = window_end
             
             if d_count % 100 == 0:
-                print(f"Processed {d_count} drivers across batches. Current optimal pairs locked: {len(final_pairs)}")
+                print(f"Processed {d_count} drivers across batches. Current feasible pairs: {len(final_pairs)}")
 
         # Generate negative labels: real pairs that genuinely fail the matching criteria
         # We compute ALL features honestly — no hardcoded fakes — so the model learns
