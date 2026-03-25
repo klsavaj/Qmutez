@@ -21,14 +21,18 @@ An `XGBClassifier` models human economic behavior, utilizing the `overlap_ratio`
 The `compute_match_score()` function combines these non-correlative outputs into a single metric capable of ranking an ordered queue.
 *   `Rank Score = Acceptance Probability - (Penalty Weight * Predicted Detour)`
 
-### 5. Bipartite Graph Optimization
-Once all Candidate Pairs within the batch window receive a `Rank Score`, the system solves the ecosystem mathematically. Rather than greedily matching the first available driver, the dataset is represented as a **Bipartite Graph**. 
+### 5. Bipartite Graph Optimization (Production Inference)
+The training pipeline collects ALL feasible pairs with independently assigned stochastic labels, giving the model the complete distribution of matches to learn from. 
+
+At **inference time** (production deployment), once all Candidate Pairs within a batch window receive their ML-predicted `Rank Score`, the system solves the assignment optimally. The candidates are represented as a **Bipartite Graph**:
 *   **Nodes:** Drivers ($D$) and Riders ($R$).
 *   **Edges ($x_{ij}$):** Feasible matches connecting $D_i$ to $R_j$.
-*   **Weights ($w_{ij}$):** The ML-generated `Rank Score`.
+*   **Weights ($w_{ij}$):** The ML-generated `Rank Score` (from the trained XGBoost model).
 
-The system executes a Maximum Weight Bipartite Matching algorithm (e.g., Hungarian Algorithm) to find the globally optimal combination that maximizes ride acceptance while minimizing total system detour:
+The system executes a Maximum Weight Bipartite Matching algorithm (e.g., Hungarian Algorithm via `networkx.max_weight_matching`) to find the globally optimal combination that maximizes ride acceptance while minimizing total system detour:
 $$ \max \sum_{i} \sum_{j} w_{ij} x_{ij} $$
 Subject to the constraints that every Driver and every Rider can only be matched a maximum of once:
 *   $ \sum_{j} x_{ij} \le 1 $  (For all $i$)
 *   $ \sum_{i} x_{ij} \le 1 $  (For all $j$)
+
+*Note: This separation (training sees all pairs, inference selects optimal assignments) eliminates selection bias and ensures the model learns general acceptance patterns, not just "winning-pair" patterns.*

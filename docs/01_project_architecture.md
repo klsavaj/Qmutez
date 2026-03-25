@@ -15,7 +15,7 @@ RideShare/
 ├── notebooks/              # Jupyter notebooks for visual EDA and trade-off analysis
 ├── src/                    # Core source code modules
 │   ├── data/               # Ingestion and cleaning scripts
-│   ├── simulation/         # O(N²) pairing and spatial logic
+│   ├── simulation/         # BallTree spatial pairing and feature logic
 │   └── models/             # Benchmark and advanced ML frameworks
 ├── tests/                  # Pytest unit tests
 └── environment.yml         # Conda dependency exact locking

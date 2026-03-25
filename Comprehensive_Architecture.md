@@ -17,7 +17,7 @@ This document provides a comprehensive, start-to-finish architectural overview o
 ### 2. Geographic Data Cleaning & Flexible Hub Creation
 *   The system loads the raw Parquet file into pandas.
 *   **Coordinate Cleaning:** Drops invalid coordinates outside the NYC Tri-State bounding box (Lat: `40.5`-`41.2`, Lon: `-74.3`-`-73.7`).
-*   **Flexible Pickup Hub Formation:** Extracted Zone IDs (`PULocationID`) are mapped to their official geographic Polygon Centroids. This artificially aggregates isolated doorstep pickups into **Smart Meeting Hubs** (e.g., Starbucks or Subway entrances). This is the secret to resolving the "door-to-door friction" that sinks most carpool startups, instantly increasing the system match probability by up to 5x.
+*   **Zonal Bounding Box Distribution + Point-in-Polygon Refinement:** Extracted Zone IDs (`PULocationID`) are mapped to their true geographic shapefile bounds. Instead of clustering trips at artificial "centroids," pickups are uniformly distributed across the full area of their respective zones. A subsequent polygon validation step uses `shapely.contains()` rejection sampling to ensure every coordinate falls within the actual zone polygon (not in water or across boundaries), preserving the true spatial density and ensuring the model correctly evaluates "edge-case" detours near zone boundaries.
 *   **Economic Check:** Strips rows with negative fares, zero distances.
 *   The clean dataset is saved to `data/processed/`.
 

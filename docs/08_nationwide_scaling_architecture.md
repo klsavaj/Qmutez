@@ -36,10 +36,10 @@ Therefore, **one single machine learning model** controls the entire country. Th
 
 ---
 
-## 2. Dynamic Configuration Clustering (Solving O(N²))
-While the AI scales perfectly via abstraction, the `PairGenerator` simulation engine relies on a hardcoded "Algorithmic Shield" (`max_detour_km`) to block the 25,000,000+ absurd matching calculations that cause the $O(N^2)$ Server Death Spiral. 
+## 2. Dynamic Configuration Clustering (Regional Adaptation)
+While the AI scales perfectly via abstraction, the `PairGenerator` simulation engine uses a configurable detour threshold (`max_detour_km`) to define the feasibility boundary for each geographic region. This threshold controls the BallTree spatial query radius and the detour acceptability cutoff, adapting the matching behavior to local driving conditions.
 
-In `config/dev_config.yaml`, the shield is hardcoded to `max_detour_km: 3.0` for New York. If Qmutez scales to the Midwest, a `3.0` km limit is violently restrictive and will result in zero matches on a highway system.
+In `config/dev_config.yaml`, the threshold is configured to `max_detour_km: 3.0` for New York. If Qmutez scales to the Midwest, a `3.0` km limit is violently restrictive and will result in zero matches on a highway system.
 
 ### Solution: Geographic Density Tiers
 We decouple the routing logic from the codebase. When the live Qmutez app receives a Rider Request, the backend server pings the user's GPS coordinates and applies a **Density Clustering Heuristic**:
@@ -54,5 +54,10 @@ We decouple the routing logic from the codebase. When the live Qmutez app receiv
     *   *Configuration Triggered:* `max_detour_km = 20.0`, `max_detour_mins = 15.0`.
     *   *The Speed Limit Logic:* How does a massive 20km detour align with a standard 15-minute wait time tolerance? Because in rural states like Maine, the detour occurs on a 70-mph (112 km/h) highway. Covering 20km on I-95 only taking 10.5 minutes. The algorithmic shield must be open up to 20km precisely *because* the speed limit allows the driver to clear it within the psychological `max_detour_mins` threshold.
 
+### Spatial Integrity: Point-in-Polygon Validation
+A third critical scaling mechanism operates at the coordinate synthesis layer. NYC Taxi Zones are compact and roughly rectangular, so scattering pickups across bounding boxes works well. But suburban census tracts and rural county polygons are often highly irregular — following rivers, wrapping around lakes, or forming L-shapes along highways. A simple bounding box scatter would place a significant fraction of synthesized coordinates in water, forests, or neighboring jurisdictions.
+
+To solve this, `loader.py` applies **Point-in-Polygon Refinement** after the initial bounding box scatter. Using vectorized `shapely.contains()`, every coordinate is validated against the actual zone polygon. Points that fall outside are automatically resampled via rejection sampling until they land within the polygon boundary. This ensures that when the synthesis pipeline processes non-NYC geographic data (Census tracts, GTFS zones, custom regions), every synthesized coordinate is geographically valid regardless of polygon shape.
+
 ### Conclusion
-By mathematically abstracting the dataset to Universal Ratios and dynamically tiering the `max_detour_km` and `max_detour_mins` computational shields based on geographic density and average vehicular speed, the Qmutez backend architecture serves precisely optimized P2P carpools nationwide using a single, robust codebase.
+By mathematically abstracting the dataset to Universal Ratios, dynamically tiering the `max_detour_km` and `max_detour_mins` computational shields based on geographic density and average vehicular speed, and enforcing point-in-polygon spatial validity for arbitrary zone geometries, the Qmutez backend architecture serves precisely optimized P2P carpools nationwide using a single, robust codebase.
