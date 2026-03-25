@@ -10,7 +10,7 @@ This codebase uses historical NYC Taxi data to simulate a complex Driver-Rider e
 ## Architecture
 - `config/`: Contains YAML files to switch between `dev` (small sample) and `prod` (full dataset) modes.
 - `src/data/`: Modules to fetch and clean raw TLC Parquet files.
-- `src/simulation/`: The core engine that engineers features like Haversine distance, temporal overlap, and calculates detour costs.
+- `src/simulation/`: The core engine that generates training pairs using BallTree spatial indexing, Haversine distance, temporal overlap, and multi-factor stochastic labeling.
 - `src/models/`: Contains Rule-Based baselines, Logistic Regression baselines, and the final Multi-Objective XGBoost model.
 - `notebooks/`: Jupyter Notebooks demonstrating analytical findings and rendering trade-off curves.
 
@@ -55,18 +55,9 @@ Here is the exact order of the pipeline.
 
 Because we engineered this with strict Separation of Concerns, the Machine Learning architecture requires exactly 3 sequential steps.
 
-Step 1 (loader.py): Data Ingestion & Math Synthesis. (You only run this ONCE to download the 3.5M rows and calculate the Haversine Centroids).
-Step 2 (
-
-pair_generator.py
-): Simulation. (This takes the raw rides and matches them together using the Bipartite Graph).
-Step 3 (
-
-03_model_evaluation.ipynb
- or 
-
-xgb_matching.py
-): Intelligence. (This feeds the simulated matches into the XGBoost AI).
+Step 1 (loader.py): Data Ingestion & Coordinate Synthesis. (You only run this ONCE to download the 3.5M rows, compute zone centroids, and generate corridor-aware dropoff bearings).
+Step 2 (pair_generator.py): Simulation. (This takes the processed rides and generates all feasible driver-rider training pairs using BallTree spatial indexing).
+Step 3 (03_model_evaluation.ipynb or xgb_matching.py): Intelligence. (This feeds the simulated matches into the XGBoost AI).
 If you want to run it in DEV mode (Fast Testing / Debugging)
 Run these commands in order in your terminal. This will use 
 

@@ -31,3 +31,11 @@ build/
 deep_bottleneck_analysis.md
 nationwide_scaling_analysis.md
 implementation_plan_Git.md
+implementation_plan.md
+task.md
+docs/09_resolved_bottleneck_analysis.md
+docs/10_learning_path.md
+docs/11_research_paper_analysis.md
+
+# Claude Code internal state
+.claude/
