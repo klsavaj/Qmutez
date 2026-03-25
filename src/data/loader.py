@@ -97,26 +97,60 @@ class DataLoader:
             print("Mapping PULocationID to exact Geographic Centroids...")
             gdf = gpd.read_file(os.path.join(zone_path, "taxi_zones.shp"))
             
-            # Calculate centroids in native projected CRS (highly accurate), then convert to Lat/Lon EPSG:4326
-            centroids_latlon = gdf.geometry.centroid.to_crs("EPSG:4326")
+            # Evaluate bounds for Zonal Bounding Box Distribution (EPSG:4326)
+            gdf_4326 = gdf.to_crs("EPSG:4326")
+            bounds = gdf_4326.bounds
+            gdf['minx'] = bounds['minx']
+            gdf['miny'] = bounds['miny']
+            gdf['maxx'] = bounds['maxx']
+            gdf['maxy'] = bounds['maxy']
+            
+            # Calculate centroids for the corridor bearing math later
+            centroids_latlon = gdf_4326.geometry.centroid
             gdf['centroid_lon'] = centroids_latlon.x
             gdf['centroid_lat'] = centroids_latlon.y
             
-            zone_dict = gdf.set_index('LocationID')[['centroid_lat', 'centroid_lon']].to_dict('index')
+            zone_dict = gdf.set_index('LocationID')[['minx', 'miny', 'maxx', 'maxy', 'centroid_lat', 'centroid_lon']].to_dict('index')
             
             # Fallback coordinate
             base_lat, base_lon = 40.7580, -73.9855
             
-            df['pickup_latitude'] = df['PULocationID'].map(lambda x: zone_dict.get(x, {}).get('centroid_lat', base_lat))
-            df['pickup_longitude'] = df['PULocationID'].map(lambda x: zone_dict.get(x, {}).get('centroid_lon', base_lon))
-            df['pickup_latitude'] = df['pickup_latitude'].fillna(base_lat)
-            df['pickup_longitude'] = df['pickup_longitude'].fillna(base_lon)
+            # Extract bounds for each trip based on PULocationID
+            minx = df['PULocationID'].map(lambda x: zone_dict.get(x, {}).get('minx', base_lon)).fillna(base_lon)
+            miny = df['PULocationID'].map(lambda x: zone_dict.get(x, {}).get('miny', base_lat)).fillna(base_lat)
+            maxx = df['PULocationID'].map(lambda x: zone_dict.get(x, {}).get('maxx', base_lon)).fillna(base_lon)
+            maxy = df['PULocationID'].map(lambda x: zone_dict.get(x, {}).get('maxy', base_lat)).fillna(base_lat)
             
-            # Academic Realism: Apply micro-jitter (+/- ~200 meters) so drivers aren't stacked on the exact same pixel
-            np.random.seed(42)  
-            df['pickup_latitude'] += np.random.uniform(-0.002, 0.002, size=len(df))
-            df['pickup_longitude'] += np.random.uniform(-0.002, 0.002, size=len(df))
-            
+            # Academic Realism: Apply Zonal Bounding Box Distribution so pickups are scattered uniformly across their true geographic zone
+            np.random.seed(42)
+            df['pickup_longitude'] = np.random.uniform(minx, maxx)
+            df['pickup_latitude'] = np.random.uniform(miny, maxy)
+
+            # Point-in-polygon refinement: resample any pickups that landed outside
+            # their actual zone polygon (e.g., in water or neighboring zones).
+            # Critical for irregular coastal zones and nationwide scaling to suburban/rural areas.
+            import shapely
+            zone_polygons = gdf_4326.set_index('LocationID')['geometry'].to_dict()
+            resampled_total = 0
+
+            for zone_id, polygon in zone_polygons.items():
+                idx = df.index[df['PULocationID'] == zone_id]
+                if len(idx) == 0:
+                    continue
+                bminx, bminy, bmaxx, bmaxy = polygon.bounds
+                for _ in range(10):
+                    lons = df.loc[idx, 'pickup_longitude'].values
+                    lats = df.loc[idx, 'pickup_latitude'].values
+                    outside = ~shapely.contains(polygon, shapely.points(lons, lats))
+                    if not outside.any():
+                        break
+                    n = outside.sum()
+                    resampled_total += n
+                    df.loc[idx[outside], 'pickup_longitude'] = np.random.uniform(bminx, bmaxx, n)
+                    df.loc[idx[outside], 'pickup_latitude'] = np.random.uniform(bminy, bmaxy, n)
+
+            print(f"Point-in-polygon refinement: resampled {resampled_total} points to stay within zone boundaries.")
+
             print("Computing corridor-aware dropoff bearings from zone centroids...")
             # Use DOLocationID centroids to compute the TRUE commute bearing for each trip.
             # This preserves realistic corridor patterns (e.g., Bronx → Manhattan in AM).
