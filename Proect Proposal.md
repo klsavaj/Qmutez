@@ -68,7 +68,7 @@ This synthetic pairing framework enables controlled evaluation of matching strat
 
 ---
 
-## 4. Baseline Model 
+## 3. Baseline Model
 
 I will implement two baseline approaches:
 
@@ -105,7 +105,7 @@ I will implement two baseline approaches:
 
 ---
 
-## 5. Advanced Model
+## 4. Advanced Model
 
 The advanced model focuses on **multi-objective prediction** and ranking of driver–rider pairs.
 
@@ -136,7 +136,7 @@ The advanced model focuses on **multi-objective prediction** and ranking of driv
 
 ---
 
-## 6. Evaluation Metrics
+## 5. Evaluation Metrics
 
 ### Model-Level
 
@@ -163,7 +163,7 @@ Baseline vs advanced model comparison will be performed.
 
 ---
 
-## 7. Planned Timeline (Now – End of April)
+## 6. Planned Timeline (Now – End of April)
 
 ### Week 1
 - Collect and clean NYC/Chicago taxi datasets
@@ -185,7 +185,7 @@ Baseline vs advanced model comparison will be performed.
 
 ---
 
-## 8. Areas of Uncertainty / Assistance Requested
+## 7. Areas of Uncertainty / Assistance Requested
 
 - Since my match labels are simulated, what strategies would you suggest for validating that these labels are realistic and suitable for ML training? Are there best practices for train/test splitting or sensitivity analysis for synthetic labels?
 - How can I ensure that my evaluation methodology is rigorous and scientifically credible, given that the dataset and labels are simulated? For example, how should I document assumptions, benchmark against baselines, and present robustness analysis?

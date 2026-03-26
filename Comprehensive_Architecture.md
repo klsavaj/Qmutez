@@ -27,11 +27,10 @@ This document provides a comprehensive, start-to-finish architectural overview o
 
 This module houses the pure, stateless mathematical logic required to evaluate the viability of two separate commuters sharing a route.
 
-1.  **`calculate_haversine()`:** A trigonometric algorithm that calculates the "Great Circle" distance between two GPS coordinates using the radius of the Earth. (Far more accurate than plotting Euclidean geometry on a flat map axis).
-2.  **`calculate_detour_cost()`:** Determines exactly how far out of their way the Driver has to go.
+1.  **`calculate_detour_cost()`:** Uses `geopy.geodesic()` to determine exactly how far out of their way the Driver has to go.
     *   *Formula:* `(Driver Origin -> Rider Origin -> Rider Dest -> Driver Dest) - (Driver Origin -> Driver Dest)`
-3.  **`compute_spatial_overlap()`:** A heuristic ratio showing what percentage of the new shared trip overlaps with the driver's original intended route.
-4.  **`calculate_time_overlap()`:** Ensures the Rider requested the trip within an acceptable margin (e.g., 15 mins) of the Driver's start time.
+2.  **`compute_spatial_overlap()`:** A heuristic ratio showing what percentage of the new shared trip overlaps with the driver's original intended route. Clamped to [0, 1] to handle negative detours (rider directly on the way).
+3.  **`calculate_time_overlap()`:** Ensures the Rider requested the trip within an acceptable margin (e.g., 15 mins) of the Driver's start time.
 
 ---
 
@@ -45,11 +44,11 @@ Filters millions of trips down strictly to the "Morning Commute" window (e.g., 0
 ### 2. Role Assignment
 Uses algorithmic splits (with a set random seed for reproducibility) to tag 50% of the commuters as "Drivers" aiming to offset their driving costs, and 50% as "Riders" requesting a ride.
 
-### 3. The O(N²) Bounding Filter & Pair Generation
+### 3. BallTree Spatial Indexing & Pair Generation
 Comparing *every* Driver to *every* Rider creates millions of mathematical calculations, crashing memory instantly.
-*   **Heuristic Pre-filter:** Before calculating the expensive Haversine distance, the engine checks if a Rider's pickup point is roughly within 5 kilometers (`lat +/- 0.05`) of the Driver's pickup point. If not, the pair is discarded immediately.
+*   **BallTree Spatial Index:** For each temporal batch, a `sklearn.neighbors.BallTree` is constructed from rider pickup coordinates using the Haversine metric on the unit sphere. Each driver queries the tree for neighbors within a 5km geodesic radius in **O(log N)** time — replacing the old O(N) linear scan per driver.
 *   For the remaining feasible candidates, the engine runs all functions from `feature_eng.py`.
-*   **Ground Truth Labeling:** Assigns a `1` (Match Feasible) if the detour is under the maximum threshold (e.g., < 3.0 km) and a `0` (Match Infeasible) if it is over.
+*   **Multi-Factor Stochastic Labeling:** Labels are derived from a composite of 4 independent behavioral scores (detour severity, fare profitability, temporal inconvenience, trip length ratio) plus Gumbel noise for human irrationality. This replaces simple threshold-based labeling and forces the model to learn realistic acceptance patterns.
 *   The final dataset (containing driver IDs, detour km, overlap ratios, economic fare estimates, and the binary label) is saved to `data/simulated/candidate_pairs.parquet`.
 
 ---

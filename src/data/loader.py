@@ -94,7 +94,7 @@ class DataLoader:
                 with ZipFile(io.BytesIO(z_response.content)) as z:
                     z.extractall(zone_path)
                     
-            print("Mapping PULocationID to exact Geographic Centroids...")
+            print("Mapping PULocationID to Geographic Bounding Boxes and Centroids...")
             gdf = gpd.read_file(os.path.join(zone_path, "taxi_zones.shp"))
             
             # Evaluate bounds for Zonal Bounding Box Distribution (EPSG:4326)

@@ -55,7 +55,7 @@ Here is the exact order of the pipeline.
 
 Because we engineered this with strict Separation of Concerns, the Machine Learning architecture requires exactly 3 sequential steps.
 
-Step 1 (loader.py): Data Ingestion & Coordinate Synthesis. (You only run this ONCE to download the 3.5M rows, compute zone centroids, and generate corridor-aware dropoff bearings).
+Step 1 (loader.py): Data Ingestion & Coordinate Synthesis. (You only run this ONCE to download the 3.5M rows, apply Zonal Bounding Box Distribution with point-in-polygon validation, and generate corridor-aware dropoff bearings).
 Step 2 (pair_generator.py): Simulation. (This takes the processed rides and generates all feasible driver-rider training pairs using BallTree spatial indexing).
 Step 3 (03_model_evaluation.ipynb or xgb_matching.py): Intelligence. (This feeds the simulated matches into the XGBoost AI).
 If you want to run it in DEV mode (Fast Testing / Debugging)
@@ -79,24 +79,19 @@ Command 3: (Run the XGBoost Evaluation visually in Jupyter)
 ```bash
 export PYTHONPATH=/Users/krunal/Desktop/RideShare:$PYTHONPATH && conda run -n qmutez --cwd /Users/krunal/Desktop/RideShare jupyter nbconvert --to notebook --execute --inplace notebooks/03_model_evaluation.ipynb
 ```
-If you want to run it in PROD mode (Server-Side / Massive Data)
-When it's time to generate the true, massive dataset with Tens of Thousands of matches, you run these commands. The only difference is that we force Step 2 to use --config config/prod_config.yaml to unleash the full cpu graphing power.
+### If you want to run it in PROD mode (Server-Side / Massive Data)
+When it's time to generate the true, massive dataset with Tens of Thousands of matches, you run these commands. The only difference is that we force Step 2 to use `--config config/prod_config.yaml` (3km NYC-dense thresholds) to unleash the full dataset.
 
-Command 1: (Assuming the Parquet is already downloaded)
+Command 1: (Skip unless you deleted the raw data)
 
-bash
- Skip unless you deleted the raw data
-Command 2: (Run the Massive Production Simulation - This will take ~5 minutes!)
+Command 2: (Run the Massive Production Simulation — This will take ~5 minutes!)
 
 ```bash
 PYTHONPATH=. conda run -n qmutez python -c "from src.simulation.pair_generator import PairGenerator; sim = PairGenerator('data/processed/cleaned_yellow_tripdata_2025-08.parquet', 'config/prod_config.yaml'); sim.filter_commuting_window(); sim.split_drivers_and_riders(); sim.generate_candidate_pairs(limit=25000)"
 ```
+
 Command 3: (Run the XGBoost AI on the massive dataset)
 
 ```bash
 export PYTHONPATH=/Users/krunal/Desktop/RideShare:$PYTHONPATH && conda run -n qmutez --cwd /Users/krunal/Desktop/RideShare jupyter nbconvert --to notebook --execute --inplace notebooks/03_model_evaluation.ipynb
-You can save this exact message or copy these commands into your 
 ```
-
-README.md
- file so you or a professor can legally run the Qmutez engine seamlessly anytime!
