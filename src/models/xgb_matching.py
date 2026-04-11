@@ -1,8 +1,15 @@
+import os
 import pandas as pd
 import numpy as np
 import xgboost as xgb
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
-from sklearn.metrics import mean_absolute_error, accuracy_score, classification_report
+from sklearn.metrics import (
+    mean_absolute_error, mean_squared_error, accuracy_score,
+    classification_report, f1_score, roc_auc_score, roc_curve
+)
 
 class MultiObjectiveMatcher:
     """
@@ -107,10 +114,45 @@ class MultiObjectiveMatcher:
 
         self.classifier.fit(X_train, yc_train)
         pred_match = self.classifier.predict(X_test)
+        pred_proba = self.classifier.predict_proba(X_test)[:, 1]
         acc = accuracy_score(yc_test, pred_match)
         print(f"Classification Accuracy: {acc:.2f}")
         print("Classification Report:")
         print(classification_report(yc_test, pred_match, zero_division=0))
+
+        # --- Additional metrics ---
+        rmse = np.sqrt(mean_squared_error(yr_test, pred_detour))
+        f1 = f1_score(yc_test, pred_match, zero_division=0)
+        roc_auc = roc_auc_score(yc_test, pred_proba)
+        print(f"\nRegression RMSE (Detour km): {rmse:.4f}")
+        print(f"Classification F1: {f1:.4f}")
+        print(f"Classification ROC-AUC: {roc_auc:.4f}")
+
+        # --- Save plots ---
+        os.makedirs("figures", exist_ok=True)
+
+        # Feature importance
+        fig, ax = plt.subplots(figsize=(8, 5))
+        xgb.plot_importance(self.classifier, ax=ax, importance_type='gain')
+        ax.set_title("Feature Importance (Classifier — Gain)")
+        fig.tight_layout()
+        fig.savefig("figures/feature_importance.png", dpi=150)
+        plt.close(fig)
+        print("Saved figures/feature_importance.png")
+
+        # ROC curve
+        fpr, tpr, _ = roc_curve(yc_test, pred_proba)
+        fig, ax = plt.subplots(figsize=(6, 5))
+        ax.plot(fpr, tpr, label=f"XGBoost (AUC = {roc_auc:.3f})")
+        ax.plot([0, 1], [0, 1], 'k--', label="Random")
+        ax.set_xlabel("False Positive Rate")
+        ax.set_ylabel("True Positive Rate")
+        ax.set_title("ROC Curve — Match Acceptance Classifier")
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig("figures/roc_curve.png", dpi=150)
+        plt.close(fig)
+        print("Saved figures/roc_curve.png")
 
         return X_test, yr_test, yc_test, pred_detour, pred_match
 
