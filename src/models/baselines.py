@@ -1,4 +1,5 @@
 import pandas as pd
+import yaml
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
@@ -81,19 +82,31 @@ class LogisticRegressionBaseline:
         return metrics
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="config/dev_config.yaml")
+    args = parser.parse_args()
+
+    with open(args.config, "r") as f:
+        config = yaml.safe_load(f)
+    sim = config["simulation"]
+
     try:
         print("Loading simulated pairs...")
         df = pd.read_parquet("data/simulated/candidate_pairs.parquet")
-        
+
         print("\n--- Testing Rule-Based Baseline ---")
-        rb = RuleBasedBaseline()
+        rb = RuleBasedBaseline(
+            max_km=sim["max_detour_km"],
+            max_mins=sim["max_detour_mins"]
+        )
         y_pred_rb = rb.predict(df)
         print(rb.evaluate(df['label'], y_pred_rb))
-        
+
         print("\n--- Testing Logistic Regression Baseline ---")
         lr = LogisticRegressionBaseline()
         lr_metrics = lr.train_and_evaluate(df)
         print(lr_metrics)
-        
+
     except FileNotFoundError:
         print("Required datasets not found. Run simulation pipeline first.")

@@ -53,12 +53,13 @@ class PairGenerator:
         print(f"Total trips in window: {len(self.df)}")
         return self.df
 
-    def split_drivers_and_riders(self, driver_ratio=0.5):
+    def split_drivers_and_riders(self, driver_ratio=None):
         """
         Randomly tags a boolean assignment to trips establishing the two sides 
         of the matchmaking marketplace.
         """
-        # Set explicitly to 42 for academic reproducibility
+        if driver_ratio is None:
+            driver_ratio = self.sim_config.get("driver_ratio", 0.5)
         np.random.seed(42)
         msk = np.random.rand(len(self.df)) < driver_ratio
         
@@ -93,9 +94,8 @@ class PairGenerator:
         final_pairs = []
         d_count = 0
         
-        # Simulate temporal batches (e.g., 5-minute rolling windows to ensure enough density)
-        # In a real app this is 30-60 seconds, but 5 mins works better for historical data density
-        window_size = pd.Timedelta(minutes=5)
+        batch_window_mins = self.sim_config.get("batch_window_mins", 5)
+        window_size = pd.Timedelta(minutes=batch_window_mins)
         start_time = self.drivers_df['tpep_pickup_datetime'].min()
         end_time = self.drivers_df['tpep_pickup_datetime'].max()
         
@@ -128,7 +128,7 @@ class PairGenerator:
             )
             tree = BallTree(rider_coords_rad, metric='haversine')
             EARTH_RADIUS_KM = 6371.0
-            SEARCH_RADIUS_KM = 5.0
+            SEARCH_RADIUS_KM = self.sim_config.get("search_radius_km", 5.0)
             
             # Collect ALL feasible pairs in this batch — not just bipartite-optimal ones.
             # Why: Training data must represent the full distribution of feasible matches

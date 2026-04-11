@@ -19,3 +19,6 @@ simulation:
   # Thresholds
   max_detour_km: 3.0
   max_detour_mins: 15.0
+  search_radius_km: 5.0
+  batch_window_mins: 5
+  driver_ratio: 0.5
