@@ -59,10 +59,28 @@ class MultiObjectiveMatcher:
         X, y_reg, y_clf = self.prepare_data(df)
         print(f"Training on {len(X)} samples with {len(self.features)} features.")
 
-        # Single unified split — both models see the same train and test rows
-        X_train, X_test, yr_train, yr_test, yc_train, yc_test = train_test_split(
-            X, y_reg, y_clf, test_size=0.2, random_state=42
+        # Driver-level train/test split to prevent entity leakage.
+        # Splitting by pair (random) allows the same driver to appear in both
+        # train and test, inflating test accuracy. Splitting by driver_id ensures
+        # the model never sees a test driver during training.
+        unique_drivers = df['driver_id'].unique()
+        train_drivers, test_drivers = train_test_split(
+            unique_drivers, test_size=0.2, random_state=42
         )
+        train_mask = df['driver_id'].isin(train_drivers)
+        train_df = df[train_mask].reset_index(drop=True)
+        test_df  = df[~train_mask].reset_index(drop=True)
+
+        X_train = train_df[self.features]
+        X_test  = test_df[self.features]
+        yr_train = train_df['detour_distance_km']
+        yr_test  = test_df['detour_distance_km']
+        yc_train = train_df['label']
+        yc_test  = test_df['label']
+
+        print(f"Driver-level split: {len(train_df)} train pairs, {len(test_df)} test pairs.")
+        print(f"No driver_id overlap between train and test: "
+              f"{len(set(train_df['driver_id']) & set(test_df['driver_id'])) == 0}")
 
         # --- Hyperparameter tuning via grid search on the classifier ---
         print("\nRunning grid search for classifier hyperparameters...")
