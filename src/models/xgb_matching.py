@@ -100,10 +100,17 @@ class MultiObjectiveMatcher:
         best_params = grid_search.best_params_
         print(f"Best classifier params: {best_params}")
 
+        # Compute scale_pos_weight to handle class imbalance (mirrors LogReg class_weight='balanced')
+        pos_count = (yc_train == 1).sum()
+        neg_count = (yc_train == 0).sum()
+        scale_pos_weight = neg_count / max(pos_count, 1)
+        print(f"Class balance — pos: {pos_count}, neg: {neg_count}, scale_pos_weight: {scale_pos_weight:.3f}")
+
         # Rebuild both models with tuned params
         self.classifier = xgb.XGBClassifier(
             objective='binary:logistic',
             eval_metric='logloss',
+            scale_pos_weight=scale_pos_weight,
             **best_params
         )
         self.regressor = xgb.XGBRegressor(
