@@ -42,7 +42,7 @@ class MultiObjectiveMatcher:
         )
         
         # The exact parameter columns the tree utilizes to compute splits
-        self.features = ['driver_orig_dist', 'overlap_ratio', 'time_diff_mins', 'driver_approx_fare', 'rider_approx_fare']
+        self.features = ['driver_orig_dist', 'overlap_ratio', 'time_diff_mins', 'driver_approx_fare', 'rider_approx_fare', 'fare_ratio', 'pickup_hour', 'pickup_dow']
         
     def prepare_data(self, df):
         X = df[self.features]

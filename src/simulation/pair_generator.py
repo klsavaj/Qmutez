@@ -195,6 +195,12 @@ class PairGenerator:
                         noise = np.random.gumbel(0, 0.1)
                         is_accepted = 1 if (acceptance_prob + noise) > 0.45 else 0
                         
+                        # Pre-computed interaction features — hand the model direct signals
+                        # instead of making it discover the ratio relationship through splits
+                        fare_ratio = rider.fare_amount / max(driver.fare_amount, 1.0)
+                        pickup_hour = driver.tpep_pickup_datetime.hour
+                        pickup_dow  = driver.tpep_pickup_datetime.weekday()
+
                         final_pairs.append({
                             'driver_id': d_idx,
                             'rider_id': r_idx,
@@ -204,6 +210,9 @@ class PairGenerator:
                             'time_diff_mins': diff_mins,
                             'driver_approx_fare': driver.fare_amount,
                             'rider_approx_fare': rider.fare_amount,
+                            'fare_ratio': fare_ratio,
+                            'pickup_hour': pickup_hour,
+                            'pickup_dow': pickup_dow,
                             'label': is_accepted
                         })
                 
@@ -244,6 +253,8 @@ class PairGenerator:
             rider_time = self.riders_df.loc[r_idx, 'tpep_pickup_datetime']
             _, time_diff = calculate_time_overlap(driver_time, rider_time)
             
+            d_fare = self.drivers_df.loc[d_idx, 'fare_amount']
+            r_fare = self.riders_df.loc[r_idx, 'fare_amount']
             negative_pairs.append({
                 'driver_id': d_idx,
                 'rider_id': r_idx,
@@ -251,8 +262,11 @@ class PairGenerator:
                 'detour_distance_km': detour,
                 'overlap_ratio': overlap_ratio,
                 'time_diff_mins': time_diff,
-                'driver_approx_fare': self.drivers_df.loc[d_idx, 'fare_amount'],
-                'rider_approx_fare': self.riders_df.loc[r_idx, 'fare_amount'],
+                'driver_approx_fare': d_fare,
+                'rider_approx_fare': r_fare,
+                'fare_ratio': r_fare / max(d_fare, 1.0),
+                'pickup_hour': driver_time.hour,
+                'pickup_dow': driver_time.weekday(),
                 'label': 0
             })
         
