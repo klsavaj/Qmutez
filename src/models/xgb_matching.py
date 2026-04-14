@@ -179,6 +179,37 @@ class MultiObjectiveMatcher:
         plt.close(fig)
         print("Saved figures/roc_curve.png")
 
+        # --- Feature ablation study ---
+        # Remove each feature one at a time, retrain, measure accuracy drop.
+        # The bigger the drop, the more important the feature.
+        print("\nRunning feature ablation study...")
+        ablation_results = {}
+        for feat in self.features:
+            ablation_feats = [f for f in self.features if f != feat]
+            clf_ablation = xgb.XGBClassifier(
+                objective='binary:logistic', eval_metric='logloss',
+                scale_pos_weight=scale_pos_weight, **best_params
+            )
+            clf_ablation.fit(X_train[ablation_feats], yc_train)
+            ablation_acc = accuracy_score(yc_test, clf_ablation.predict(X_test[ablation_feats]))
+            ablation_results[feat] = round(acc - ablation_acc, 4)
+
+        print("Accuracy drop when feature removed (higher = more important):")
+        for feat, drop in sorted(ablation_results.items(), key=lambda x: -x[1]):
+            print(f"  {feat}: {drop:+.4f}")
+
+        fig, ax = plt.subplots(figsize=(8, 5))
+        feats_sorted = sorted(ablation_results, key=lambda x: ablation_results[x])
+        drops_sorted = [ablation_results[f] for f in feats_sorted]
+        ax.barh(feats_sorted, drops_sorted, color='steelblue')
+        ax.set_xlabel("Accuracy drop when removed")
+        ax.set_title("Feature Ablation Study")
+        ax.axvline(0, color='black', linewidth=0.8)
+        fig.tight_layout()
+        fig.savefig("figures/ablation_study.png", dpi=150)
+        plt.close(fig)
+        print("Saved figures/ablation_study.png")
+
         return X_test, yr_test, yc_test, pred_detour, pred_match
 
     def compute_match_score(self, feature_row):
