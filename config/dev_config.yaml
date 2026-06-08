@@ -12,11 +12,14 @@ data:
   processed_dir: "data/processed"
 
 simulation:
-  time_window:
-    start_hour: 7
-    end_hour: 10
+  # AM + PM commute windows (commuter carpooling covers both rush hours)
+  time_windows:
+    - start_hour: 7
+      end_hour: 10
+    - start_hour: 16
+      end_hour: 19
   # Downsample ratio for fast testing (e.g. 0.05 = keep only 5% of trips)
-  sample_ratio: 0.05
+  sample_ratio: 0.25
   # Matching thresholds (same as prod for consistent training)
   max_detour_km: 3.0
   max_detour_mins: 15.0

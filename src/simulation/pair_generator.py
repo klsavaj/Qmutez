@@ -15,7 +15,7 @@ class PairGenerator:
     to train our XGBoost models on acceptable vs unacceptable geographic detours.
     """
     def __init__(self, processed_data_path, config_path="config/dev_config.yaml"):
-        # Utilizing YAML parameters ensures our ML simulator is highly reproducible
+        # Utilizing YAML parameters 
         with open(config_path, "r") as file:
             self.config = yaml.safe_load(file)
             
@@ -30,21 +30,33 @@ class PairGenerator:
         
     def filter_commuting_window(self):
         """
-        Isolates temporal commutes.
-        Why: We only care about P2P carpooling during high-volume directional flows 
-        (like Morning 7AM-10AM rushes).
+        Isolates commute windows. Supports multiple windows (AM + PM rush hours)
+        via the time_windows list in config, or falls back to a single time_window.
         """
-        start_hr = self.sim_config["time_window"]["start_hour"]
-        end_hr = self.sim_config["time_window"]["end_hour"]
+        windows = self.sim_config.get("time_windows")
+
+        if windows:
+            mask = pd.Series(False, index=self.df.index)
+            labels = []
+            for w in windows:
+                mask |= (
+                    (self.df['tpep_pickup_datetime'].dt.hour >= w['start_hour']) &
+                    (self.df['tpep_pickup_datetime'].dt.hour < w['end_hour'])
+                )
+                labels.append(f"{w['start_hour']}:00-{w['end_hour']}:00")
+            self.df = self.df[mask]
+            print(f"Filtering for commute windows: {' + '.join(labels)}")
+        else:
+            # backward compatibility: single time_window key
+            start_hr = self.sim_config["time_window"]["start_hour"]
+            end_hr   = self.sim_config["time_window"]["end_hour"]
+            print(f"Filtering for commute window: {start_hr}:00 - {end_hr}:00")
+            self.df = self.df[
+                (self.df['tpep_pickup_datetime'].dt.hour >= start_hr) &
+                (self.df['tpep_pickup_datetime'].dt.hour < end_hr)
+            ]
         
-        print(f"Filtering for commute window: {start_hr}:00 - {end_hr}:00")
-        
-        self.df = self.df[
-            (self.df['tpep_pickup_datetime'].dt.hour >= start_hr) & 
-            (self.df['tpep_pickup_datetime'].dt.hour < end_hr)
-        ]
-        
-        # Apply deterministic downsampling so DEV environments don't cause MemoryErrors
+        # Apply deterministic downsampling 
         sample_ratio = self.sim_config.get("sample_ratio", 1.0)
         if sample_ratio < 1.0:
             print(f"Downsampling to {sample_ratio*100}% for development.")
@@ -151,7 +163,10 @@ class PairGenerator:
                 
                 if len(neighbor_indices) == 0:
                     continue
-                    
+
+                # shareability_count: how many riders are within search radius of this driver.
+                # High count = driver is in a dense corridor (Santi et al., PNAS 2014).
+                shareability_count = len(neighbor_indices)
                 potential_riders = batch_riders.iloc[neighbor_indices]
                 
                 for rider in potential_riders.itertuples():
@@ -164,23 +179,23 @@ class PairGenerator:
                     
                     if detour <= max_detour_km:
                         overlap_ratio = compute_spatial_overlap(detour, d_orig_dist)
-                        time_compat, diff_mins = calculate_time_overlap(driver.tpep_pickup_datetime, rider.tpep_pickup_datetime)
+                        diff_mins = calculate_time_overlap(driver.tpep_pickup_datetime, rider.tpep_pickup_datetime)
                         
                         # Multi-factor Ground Truth Labeling
                         # Models acceptance as a composite of independent behavioral
                         # factors the ML model must learn to combine.
                         
-                        # Factor 1: Fare profitability — is the rider's fare worth the detour?
+                        # Factor 1: Fare profitability, is the rider's fare worth the detour?
                         fare_ratio = rider.fare_amount / max(driver.fare_amount, 1.0)
                         fare_score = min(fare_ratio, 1.5) / 1.5  # Normalize to [0, 1]
                         
-                        # Factor 2: Temporal inconvenience — how disruptive is the timing?
+                        # Factor 2: Temporal inconvenience, how disruptive is the timing?
                         time_score = max(0, 1.0 - (diff_mins / 15.0))  # 0 at 15min, 1 at 0min
                         
-                        # Factor 3: Trip length ratio — short detour on long trip = acceptable
+                        # Factor 3: Trip length ratio, short detour on long trip = acceptable
                         trip_ratio = d_orig_dist / max(d_orig_dist + detour, 0.1)
                         
-                        # Factor 4: Detour severity — normalized by threshold
+                        # Factor 4: Detour severity, normalized by threshold
                         detour_score = 1.0 - (detour / max_detour_km)
                         
                         # Composite acceptance probability with weighted factors
@@ -213,6 +228,7 @@ class PairGenerator:
                             'fare_ratio': fare_ratio,
                             'pickup_hour': pickup_hour,
                             'pickup_dow': pickup_dow,
+                            'shareability_count': shareability_count,
                             'label': is_accepted
                         })
                 
@@ -222,8 +238,6 @@ class PairGenerator:
                 print(f"Processed {d_count} drivers across batches. Current feasible pairs: {len(final_pairs)}")
 
         # Generate negative labels: real pairs that genuinely fail the matching criteria
-        # We compute ALL features honestly — no hardcoded fakes — so the model learns
-        # real rejection patterns instead of trivial shortcuts.
         print("Generating negative labels from genuinely infeasible pairs...")
         rng = np.random.RandomState(42)
         negative_pairs = []
@@ -247,11 +261,11 @@ class PairGenerator:
             if detour <= max_detour_km:
                 continue
             
-            # Compute REAL features — no fakes
+            # Compute REAL features
             overlap_ratio = compute_spatial_overlap(detour, d_orig_dist)
             driver_time = self.drivers_df.loc[d_idx, 'tpep_pickup_datetime']
             rider_time = self.riders_df.loc[r_idx, 'tpep_pickup_datetime']
-            _, time_diff = calculate_time_overlap(driver_time, rider_time)
+            time_diff = calculate_time_overlap(driver_time, rider_time)
             
             d_fare = self.drivers_df.loc[d_idx, 'fare_amount']
             r_fare = self.riders_df.loc[r_idx, 'fare_amount']
@@ -267,6 +281,7 @@ class PairGenerator:
                 'fare_ratio': r_fare / max(d_fare, 1.0),
                 'pickup_hour': driver_time.hour,
                 'pickup_dow': driver_time.weekday(),
+                'shareability_count': 0,  # random pair, not from BallTree batch
                 'label': 0
             })
         

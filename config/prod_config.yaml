@@ -11,9 +11,12 @@ data:
   processed_dir: "data/processed"
 
 simulation:
-  time_window:
-    start_hour: 7
-    end_hour: 10
+  # AM + PM commute windows (commuter carpooling covers both rush hours)
+  time_windows:
+    - start_hour: 7
+      end_hour: 10
+    - start_hour: 16
+      end_hour: 19
   # No downsampling in prod
   sample_ratio: 1.0
   # Thresholds
