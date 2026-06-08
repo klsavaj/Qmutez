@@ -70,7 +70,7 @@ RideShare/
 A module to handle downloading and initial cleaning of the NYC Taxi dataset. We will fetch `.parquet` files (for speed/efficiency) from the NYC TLC website, drop invalid records, and save to `data/processed/`.
 
 ### 2. P2P Simulator (`src/simulation/`)
-The engine of the project. It will read processed trips, identify commuting windows, split profiles into Drivers/Riders, and engineer the candidate pairing features (detour distance, time, coordinate overlap). Outputs are saved to `data/simulated/`.
+The engine of the project. It reads processed trips, identifies the AM and PM commuting windows, splits profiles into Drivers/Riders, and engineers the candidate pairing features (detour distance, coordinate overlap, time difference, fare ratio, pickup hour/day-of-week, and shareability count). Outputs are saved to `data/simulated/`.
 
 ### 3. Modeling (`src/models/`)
 Implementation of the initial benchmarks and advanced model, reading only from `data/simulated/`.
@@ -81,7 +81,7 @@ Implementation of the initial benchmarks and advanced model, reading only from `
 ## Verification Plan
 
 ### Automated Tests
-- Run `pytest tests/` to verify core logic (e.g., Haversine distance calculations, edge cases in time window overlaps) before any model training.
+- Run `pytest tests/` to verify core logic (e.g., geodesic distance calculations, edge cases in time window overlaps) before any model training.
 - CI/CD ready: The test structure will be compatible with GitHub Actions for future production deployments.
 
 ### Manual / Analytical Verification

@@ -116,15 +116,17 @@ The advanced model focuses on **multi-objective prediction** and ranking of driv
   1. Predict detour cost (continuous regression)  
   2. Predict match probability (classification)  
   3. Compute a composite score for multi-objective matching  
-- **Input Features:**  
-  - Driver route coordinates (start, end, waypoints)  
-  - Rider pickup/drop coordinates  
-  - Detour distance and estimated time deviation  
-  - Route similarity metrics (e.g., fraction of route overlapped)  
-  - Time window overlap  
-  - Rider trip length  
+- **Input Features:** *(as implemented — relative/abstracted features rather than absolute coordinates, so the model generalizes across cities)*
+  - `driver_orig_dist` — driver's original solo trip distance
+  - `overlap_ratio` — fraction of the shared trip aligned with the driver's intended route
+  - `time_diff_mins` — temporal gap between driver and rider pickups
+  - `driver_approx_fare` / `rider_approx_fare` — economic baselines
+  - `fare_ratio` — rider fare relative to driver fare
+  - `pickup_hour` / `pickup_dow` — temporal context (AM/PM, weekday)
+  - `shareability_count` — corridor density (riders within the driver's search radius)
+  *(The detour-prediction regressor uses these same 9 features; `detour_distance_km` is its target, not an input.)*
 - **Output:**  
-  - Predicted detour time (minutes)  
+  - Predicted detour distance (km)  
   - Probability of driver accepting match  
   - Multi-objective match score 
 
@@ -160,6 +162,8 @@ Classification:
 - Trade-off curves (earnings vs detour)  
 
 Baseline vs advanced model comparison will be performed.
+
+> **Status:** All of the above are implemented. The regressor reports MAE and RMSE; the classifier reports accuracy, precision, recall, F1, and ROC-AUC; and a system-level bipartite-matching evaluation reports match rate, average driver detour, driver earnings, rider savings, CO₂ saved, and a confidence-threshold trade-off curve.
 
 ---
 
