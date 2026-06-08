@@ -51,7 +51,7 @@ class LogisticRegressionBaseline:
         # Scaling is required for distance math, otherwise KM vastly outweighs Ratio logic
         self.scaler = StandardScaler()
         # Explicit feature definition
-        self.features = ['driver_orig_dist', 'detour_distance_km', 'overlap_ratio', 'time_diff_mins', 'driver_approx_fare', 'rider_approx_fare', 'fare_ratio', 'pickup_hour', 'pickup_dow']
+        self.features = ['driver_orig_dist', 'detour_distance_km', 'overlap_ratio', 'time_diff_mins', 'driver_approx_fare', 'rider_approx_fare', 'fare_ratio', 'pickup_hour', 'pickup_dow', 'shareability_count']
         
     def prepare_data(self, df):
         X = df[self.features]
