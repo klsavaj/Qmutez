@@ -16,8 +16,10 @@ RideShare/
 ├── src/                    # Core source code modules
 │   ├── data/               # Ingestion and cleaning scripts
 │   ├── simulation/         # BallTree spatial pairing and feature logic
-│   └── models/             # Benchmark and advanced ML frameworks
+│   ├── models/             # Benchmark and advanced ML frameworks
+│   └── visualization/      # Exploratory figure generation (feature distributions)
 ├── tests/                  # Pytest unit tests
+├── run_all.sh              # One-command end-to-end pipeline runner
 └── environment.yml         # Conda dependency exact locking
 ```
 
