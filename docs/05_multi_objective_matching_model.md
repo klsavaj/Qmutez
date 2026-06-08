@@ -17,6 +17,8 @@ An `XGBRegressor` is trained explicitly to forecast the continuous variable: *Ho
 ### 3. Classification (Acceptance Probability)
 An `XGBClassifier` models human economic behavior, utilizing the `overlap_ratio` and estimated fare splits to output a probabilistic decimal (e.g., `0.85` likelihood of acceptance).
 
+The classifier trains on **9 features**: `driver_orig_dist`, `overlap_ratio`, `time_diff_mins`, `driver_approx_fare`, `rider_approx_fare`, `fare_ratio`, `pickup_hour`, `pickup_dow`, and `shareability_count`. Note that `detour_distance_km` is intentionally **excluded** from the classifier's inputs — it is the regressor's prediction target, so including it would leak the answer. (The `LogisticRegressionBaseline`, which has no regression objective, does include `detour_distance_km`, giving it 10 features.) To counter class imbalance, the classifier sets `scale_pos_weight` to the train-set negative/positive ratio.
+
 ### 4. The Unified Ranking Score
 The `compute_match_score()` function combines these non-correlative outputs into a single metric capable of ranking an ordered queue.
 *   `Rank Score = Acceptance Probability - (Penalty Weight * Predicted Detour)`
@@ -36,3 +38,12 @@ Subject to the constraints that every Driver and every Rider can only be matched
 *   $ \sum_{i} x_{ij} \le 1 $  (For all $j$)
 
 *Note: This separation (training sees all pairs, inference selects optimal assignments) eliminates selection bias and ensures the model learns general acceptance patterns, not just "winning-pair" patterns.*
+
+### 6. Validation & Evaluation
+To make the reported numbers trustworthy and interpretable, the training routine performs:
+*   **Driver-level train/test split:** Unique `driver_id`s are partitioned 80/20 (`random_state=42`) so that no driver appears in both train and test. Splitting on individual pairs would let the same driver leak across the boundary and inflate test scores.
+*   **Hyperparameter tuning:** A 5-fold `GridSearchCV` sweeps the classifier over `n_estimators` (50/100/200), `max_depth` (3/5/7), and `learning_rate` (0.05/0.1/0.2); the regressor adopts the winning configuration.
+*   **Cross-validation & metrics:** 5-fold cross-validation accompanies the held-out test metrics — MAE and RMSE for the detour regressor; accuracy, F1, and ROC-AUC for the acceptance classifier.
+*   **Feature ablation:** Each feature is removed in turn and the classifier retrained, measuring the ROC-AUC drop, to quantify each feature's contribution (`figures/ablation_study.png`).
+*   **Learning curves:** Training vs. cross-validation accuracy across increasing training-set sizes diagnose over/under-fitting (`figures/learning_curve.png`).
+*   **System-level matching evaluation:** Beyond per-pair model metrics, the trained scores drive a `networkx.max_weight_matching` over the test set to report system outcomes — match rate, average driver detour, average driver earnings, average rider savings, and CO₂ saved — plus a confidence-threshold trade-off curve (`figures/system_tradeoff_curve.png`). Supporting plots `figures/feature_importance.png` and `figures/roc_curve.png` are also produced.

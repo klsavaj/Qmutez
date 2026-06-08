@@ -33,7 +33,7 @@ The full dataset schema provided by the TLC includes:
 ### The Qmutez Abstraction (What We Keep)
 To simulate the P2P rideshare environment realistically, we discard all administrative metadata and post-trip variables (like tips or tolls, which vary randomly per person). We strictly extract the core physical and economic facts of the ride:
 
-1.  **`tpep_pickup_datetime` & `tpep_dropoff_datetime`:** Extracted to calculate temporal overlaps (Wait Times) between drivers and riders during the morning commute window.
+1.  **`tpep_pickup_datetime` & `tpep_dropoff_datetime`:** Extracted to calculate temporal overlaps (Wait Times) between drivers and riders during the AM and PM commute windows.
 2.  **`trip_distance`:** Kept as the absolute ground truth of physical effort for the driver.
 3.  **`fare_amount`:** Kept as the exact economic baseline representing what that specific distance costs in a real-world algorithm. This is heavily utilized down the pipeline to model the financial incentive for driver acceptance.
 4.  **`PULocationID` (and the absence of Coordinates):** We detect the presence of generic zone zones to trigger the mathematical geometry synthesis described below.
@@ -99,10 +99,14 @@ Machine Learning models (specifically our Dual-Objective XGBoost architecture) d
 To prevent this, we abstract the absolute coordinates into **relative relational features**.
 
 When the simulation pairs a Driver and a Rider, it calculates the following engineered features to pass into the model:
-1.  **`detour_distance_km`:** The exact extra distance required to merge the two trips. (Calculated via Haversine distance: `Driver + Rider Route - Original Driver Route`). *Note: Detour distance is approximated using geodesic distance as a computationally efficient proxy for road-network distance.*
-2.  **`overlap_ratio`:** A psychological feature representing the percentage of the carpool that aligns with the driver's original intent. (`Original Distance / (Original Distance + Detour)`).
-3.  **`time_diff_mins`:** The exact temporal gap between the driver's departure and the rider's request.
-4.  **`driver_approx_fare` / `rider_approx_fare`:** The financial metrics.
+1.  **`detour_distance_km`:** The exact extra distance required to merge the two trips. (`Driver + Rider Route - Original Driver Route`). *Note: Detour distance is approximated using geodesic distance (`geopy.distance.geodesic`) as a computationally efficient proxy for road-network distance. This also serves as the regression target, so it is excluded from the classifier's input features to avoid leakage.*
+2.  **`driver_orig_dist`:** The driver's original solo trip distance — the denominator against which detour is judged.
+3.  **`overlap_ratio`:** A psychological feature representing the percentage of the carpool that aligns with the driver's original intent. (`Original Distance / (Original Distance + Detour)`).
+4.  **`time_diff_mins`:** The exact temporal gap between the driver's departure and the rider's request.
+5.  **`driver_approx_fare` / `rider_approx_fare`:** The financial metrics.
+6.  **`fare_ratio`:** `rider_fare / max(driver_fare, 1)` — a direct, scale-free economic-incentive signal handed to the model rather than left for it to rediscover.
+7.  **`pickup_hour` / `pickup_dow`:** The hour of day and day of week of the driver's trip — temporal context distinguishing AM vs. PM corridors and weekday vs. weekend behavior. These are *relative* contextual signals, not absolute coordinates, so they do not compromise generalization.
+8.  **`shareability_count`:** The number of candidate riders within the driver's search radius — a corridor-density measure (Santi et al., PNAS 2014).
 
 ### Synthetic Ground Truth Labeling Policy
 Because our dataset is simulated from independent taxi rides, we must mathematically define an algorithmic policy to establish "ground truth" (the `1` or `0` label representing whether a driver would actually accept the carpool). 
@@ -126,7 +130,7 @@ Each factor is normalized to [0, 1]: `detour_score` penalizes high detour relati
 This explicit policy ensures the synthetic matching labels used to train the XGBoost classification models reflect logically sound human behavioral economics, preempting concerns about arbitrary label generation.
 
 ### Conclusion: Theoretical Soundness
-The XGBoost algorithm is trained exclusively on these *relative* features (`X = [overlap_ratio, detour_distance_km, time_diff_mins, fares]`). 
+The XGBoost classifier is trained exclusively on these *relative* features (`X = [driver_orig_dist, overlap_ratio, time_diff_mins, driver_approx_fare, rider_approx_fare, fare_ratio, pickup_hour, pickup_dow, shareability_count]`) — never absolute coordinates. 
 
 It learns the fundamental human laws of geoeconomics: *"If my detour is 3km on a 4km commute, I will reject it. If my detour is 3km on a 45km commute, and the rider pays $25, I will accept it."*
 

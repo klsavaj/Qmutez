@@ -39,7 +39,7 @@ Therefore, **one single machine learning model** controls the entire country. Th
 ## 2. Dynamic Configuration Clustering (Regional Adaptation)
 While the AI scales perfectly via abstraction, the `PairGenerator` simulation engine uses a configurable detour threshold (`max_detour_km`) to define the feasibility boundary for each geographic region. This threshold controls the BallTree spatial query radius and the detour acceptability cutoff, adapting the matching behavior to local driving conditions.
 
-In `config/prod_config.yaml`, the threshold is configured to `max_detour_km: 3.0` for dense NYC. The `dev_config.yaml` uses `max_detour_km: 20` for fast testing across wider detour ranges. If Qmutez scales to the Midwest, a `3.0` km limit is violently restrictive and will result in zero matches on a highway system.
+In both `config/prod_config.yaml` and `config/dev_config.yaml`, the threshold is currently configured to `max_detour_km: 3.0` for dense NYC (dev and prod share the matching thresholds so training is consistent; they differ only in `sample_ratio`). If Qmutez scales to the Midwest, a `3.0` km limit is violently restrictive and will result in zero matches on a highway system — which is exactly why the threshold is configuration-driven and tiered per region below.
 
 ### Solution: Geographic Density Tiers
 We decouple the routing logic from the codebase. When the live Qmutez app receives a Rider Request, the backend server pings the user's GPS coordinates and applies a **Density Clustering Heuristic**:
