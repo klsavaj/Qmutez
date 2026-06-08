@@ -39,7 +39,7 @@ This module houses the pure, stateless mathematical logic required to evaluate t
 Because we use single-passenger taxi data, we must programmatically force a simulation of a P2P marketplace. This generates the synthetic training dataset required for the machine learning models.
 
 ### 1. Temporal Filtering
-Filters millions of trips down strictly to the "Morning Commute" window (e.g., 07:00 to 10:00 AM).
+Filters millions of trips down to the peak commute windows. Both rush hours are covered via the `time_windows` list in config — the **AM** window (07:00 to 10:00) and the **PM** window (16:00 to 19:00) — since commuter carpooling occurs in both directions of the daily commute. In `dev` mode the filtered trips are then downsampled to 25% for fast iteration.
 
 ### 2. Role Assignment
 Uses algorithmic splits (with a set random seed for reproducibility) to tag 50% of the commuters as "Drivers" aiming to offset their driving costs, and 50% as "Riders" requesting a ride.
@@ -48,8 +48,9 @@ Uses algorithmic splits (with a set random seed for reproducibility) to tag 50% 
 Comparing *every* Driver to *every* Rider creates millions of mathematical calculations, crashing memory instantly.
 *   **BallTree Spatial Index:** For each temporal batch, a `sklearn.neighbors.BallTree` is constructed from rider pickup coordinates using the Haversine metric on the unit sphere. Each driver queries the tree for neighbors within a 5km geodesic radius in **O(log N)** time — replacing the old O(N) linear scan per driver.
 *   For the remaining feasible candidates, the engine runs all functions from `feature_eng.py`.
+*   **Shareability Signal:** The number of riders that fall within the driver's search radius in a batch is recorded as `shareability_count` — a neighbor-density measure (Santi et al., PNAS 2014) indicating how "poolable" a driver's corridor is. (Negative samples, drawn from random infeasible pairs, carry a `shareability_count` of 0.)
 *   **Multi-Factor Stochastic Labeling:** Labels are derived from a composite of 4 independent behavioral scores (detour severity, fare profitability, temporal inconvenience, trip length ratio) plus Gumbel noise for human irrationality. This replaces simple threshold-based labeling and forces the model to learn realistic acceptance patterns.
-*   The final dataset (containing driver IDs, detour km, overlap ratios, economic fare estimates, and the binary label) is saved to `data/simulated/candidate_pairs.parquet`.
+*   The final dataset is saved to `data/simulated/candidate_pairs.parquet`. Each row carries driver/rider IDs, the driver's original distance, detour km, overlap ratio, time difference, both fare estimates, plus the engineered interaction features (`fare_ratio`, `pickup_hour`, `pickup_dow`, `shareability_count`) and the binary acceptance label.
 
 ---
 
@@ -68,6 +69,15 @@ The ultimate goal of Qmutez is to rank candidate pairings effectively. It uses *
 It divides the matching problem into two dual-objectives:
 *   **Objective A (Regression):** An `XGBRegressor` predicts exactly how many kilometers the detour will cost the driver.
 *   **Objective B (Classification):** An `XGBClassifier` models human economic behavior, predicting the boolean probability (from `0.0` to `1.0`) that the driver will actually accept the detour given the overlapping route and the estimated fare they will earn.
+
+Both sub-models train on the same engineered feature space. The classifier uses **9 features** — `driver_orig_dist`, `overlap_ratio`, `time_diff_mins`, `driver_approx_fare`, `rider_approx_fare`, `fare_ratio`, `pickup_hour`, `pickup_dow`, and `shareability_count`. `detour_distance_km` is deliberately excluded from the classifier's inputs because it is the regressor's target, and feeding it in would leak the answer.
+
+**Training rigor:**
+*   **Driver-level train/test split:** Rather than splitting on individual pairs, the unique `driver_id`s are partitioned 80/20 (`random_state=42`) so that no driver appears in both train and test. This prevents entity leakage that would otherwise inflate test scores.
+*   **Class balance:** `scale_pos_weight` (= negatives / positives, measured on the train set) is passed to the classifier so the minority "accept" class is not crushed.
+*   **Hyperparameter tuning:** A `GridSearchCV` sweep over `n_estimators`, `max_depth`, and `learning_rate` (5-fold) selects the classifier's parameters; the regressor reuses the winning configuration.
+*   **Validation & metrics:** 5-fold cross-validation is reported alongside held-out test metrics — MAE and RMSE for the regressor; accuracy, F1, and ROC-AUC for the classifier.
+*   **Interpretability & system evaluation:** The pipeline also emits a feature-importance plot, an ROC curve, a per-feature **ablation study** (ROC-AUC drop when each feature is removed), **learning curves** (train vs. CV accuracy across training-set sizes) to diagnose over/under-fitting, and a **system-level bipartite-matching evaluation** (match rate, average driver detour, driver earnings, rider savings, CO₂ saved, plus a confidence-threshold trade-off curve). Figures are written to `figures/`.
 
 ### 3. The Match Score Combiner
 The `compute_match_score()` function mathematically fuses these dual outputs into a singular ranking score.

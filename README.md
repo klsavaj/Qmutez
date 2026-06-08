@@ -10,9 +10,11 @@ This codebase uses historical NYC Taxi data to simulate a complex Driver-Rider e
 ## Architecture
 - `config/`: Contains YAML files to switch between `dev` (small sample) and `prod` (full dataset) modes.
 - `src/data/`: Modules to fetch and clean raw TLC Parquet files.
-- `src/simulation/`: The core engine that generates training pairs using BallTree spatial indexing, Haversine distance, temporal overlap, and multi-factor stochastic labeling.
+- `src/simulation/`: The core engine that generates training pairs using BallTree spatial indexing, geodesic distance, temporal overlap, and multi-factor stochastic labeling.
 - `src/models/`: Contains Rule-Based baselines, Logistic Regression baselines, and the final Multi-Objective XGBoost model.
+- `src/visualization/`: Generates exploratory figures (e.g. per-feature distributions split by label).
 - `notebooks/`: Jupyter Notebooks demonstrating analytical findings and rendering trade-off curves.
+- `run_all.sh`: One-command runner that executes the full pipeline (loader → pair generator → baselines → XGBoost → visualization) end-to-end.
 
 ## Getting Started
 
@@ -56,13 +58,19 @@ Here is the exact order of the pipeline.
 Because we engineered this with strict Separation of Concerns, the Machine Learning architecture requires exactly 3 sequential steps.
 
 Step 1 (loader.py): Data Ingestion & Coordinate Synthesis. (You only run this ONCE to download the 3.5M rows, apply Zonal Bounding Box Distribution with point-in-polygon validation, and generate corridor-aware dropoff bearings).
-Step 2 (pair_generator.py): Simulation. (This takes the processed rides and generates all feasible driver-rider training pairs using BallTree spatial indexing).
+Step 2 (pair_generator.py): Simulation. (This takes the processed rides and generates all feasible driver-rider training pairs across both the AM (07:00–10:00) and PM (16:00–19:00) commute windows using BallTree spatial indexing).
 Step 3 (03_model_evaluation.ipynb or xgb_matching.py): Intelligence. (This feeds the simulated matches into the XGBoost AI).
+
+To run the entire pipeline end-to-end with a single command, use the helper script:
+```bash
+bash run_all.sh
+```
+
 If you want to run it in DEV mode (Fast Testing / Debugging)
 Run these commands in order in your terminal. This will use 
 
 dev_config.yaml
- (which downsamples the data to 5% and only takes seconds to run).
+ (which downsamples the data to 25% and runs quickly).
 
 Command 1: (Only run if you haven't downloaded the parquet file yet)
 
