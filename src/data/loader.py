@@ -5,12 +5,9 @@ import pandas as pd
 
 class DataLoader:
     """
-    Handles the automated ingestion and preprocessing of the NYC TLC Taxi Dataset.
-    
-    Why this class is needed:
-    Machine Learning pipelines require reproducible data states. This class guarantees
-    that the raw dataset is cleanly downloaded via streaming and strictly trimmed 
-    to remove GPS anomalies and economic outliers before entering the simulation.
+    Downloads and preprocesses the NYC TLC Taxi Dataset.
+    Handles streaming download, coordinate synthesis from zone IDs,
+    and cleaning (GPS anomalies, economic outliers).
     """
     def __init__(self, config_path="config/dev_config.yaml"):
         # Load environment-specific configurations (Dev vs Prod limits)
@@ -56,22 +53,14 @@ class DataLoader:
         return local_path
 
     def clean_data(self, local_path):
-        """
-        Loads the raw parquet file, removes invalid trips, and saves a processed version.
-        
-        Why this logic is required:
-        Real-world taxi data contains 'trips' into the ocean, negative fares from 
-        broken meters, and zero-distance rides. Simulating pairs on this data would 
-        crash the geographical math models.
-        """
+        """Load raw parquet, remove invalid trips (bad coords, negative fares, zero distance), save cleaned version."""
         print(f"Loading data from {local_path}...")
         df = pd.read_parquet(local_path)
         
         initial_len = len(df)
         print(f"Initial raw data length: {initial_len}")
         
-        # Core data cleaning for P2P simulation:
-        # We explicitly verify the existence of exact coordinate columns.
+        # Check if dataset has raw coords or zone IDs
         if 'pickup_latitude' in df.columns:
             lat_col, lon_col = 'pickup_latitude', 'pickup_longitude'
             d_lat_col, d_lon_col = 'dropoff_latitude', 'dropoff_longitude'
@@ -121,7 +110,7 @@ class DataLoader:
             maxx = df['PULocationID'].map(lambda x: zone_dict.get(x, {}).get('maxx', base_lon)).fillna(base_lon)
             maxy = df['PULocationID'].map(lambda x: zone_dict.get(x, {}).get('maxy', base_lat)).fillna(base_lat)
             
-            # Academic Realism: Apply Zonal Bounding Box Distribution so pickups are scattered uniformly across their true geographic zone
+            # Apply Zonal Bounding Box Distribution so pickups are scattered uniformly across their true geographic zone
             np.random.seed(42)
             df['pickup_longitude'] = np.random.uniform(minx, maxx)
             df['pickup_latitude'] = np.random.uniform(miny, maxy)
